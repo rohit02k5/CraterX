@@ -1,0 +1,27 @@
+# Data and Images
+data/raw/
+data/processed/
+
+# Results and Artifacts
+outputs/
+results/
+*.png
+*.csv
+
+# Logs and Debug
+*.txt
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+.env
+
+# IDE
+.vscode/
+.idea/
+.ipynb_checkpoints/
