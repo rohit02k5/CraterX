@@ -57,15 +57,26 @@ crater_project/
    pip install -r requirements.txt
    ```
 
+## Key Research Implementation (Ganesh et al., 2022)
+
+The system is now fully implemented and aligned with the methodologies described in the research paper *"Automated precision counting of very small craters at lunar landing sites"*.
+
+### **Advanced Features:**
+- **Iterative Sub-pixel Fitting**: Refines crater centers and diameters using a contrast-maximization algorithm with 0.5-pixel precision.
+- **Freshness Classification**: Automatically categorizes craters into five freshness classes (**Prominent, Sharp, Distinct, Faint, Vague**) based on photometric analysis.
+- **Multi-Image Certification**: Uses robust matching across multiple views (w/ XY Discrepancy Map correction) to eliminate false positives.
+- **Enhanced CSFD**: Generates log-log cumulative size-frequency plots with standardized **sqrt(N) error bars**.
+- **Spatial Density Maps**: Visualizes crater concentrations across the landing site.
+
 ## How to Run
 
-To run the full detection pipeline:
+To run the full detection and analysis pipeline:
 
 ```bash
 python main.py
 ```
 
-*Note: The current version is a project skeleton. Logic must be implemented in the `TODO` sections of the source modules.*
+*The pipeline will process images in `data/raw`, generate certified catalogs in `outputs/crater_lists`, and produce scientific plots in `outputs/plots`.*
 
 ## License
 
