@@ -1,83 +1,68 @@
-# Lunar Crater Detection System
+# 🌔 Lunar Crater Detection System
 
-A research-grade computer vision system for detecting and analyzing craters on the lunar surface.
+A research-grade computer vision pipeline designed for high-precision crater counting and analysis on high-resolution LROC NAC imagery (0.5m/pixel). This system is optimized for scientific validity (multi-view certification) and large-scale memory efficiency.
 
-## Project Description
+---
 
-This system provides a modular pipeline for processing lunar imagery, detecting crater candidates using shadow-highlight pairs, fitting geometric models to candidates, and refining results using template matching. It also includes tools for Crater Size-Frequency Distribution (CSFD) analysis.
+## 💻 Setup Instructions (New Laptop)
 
-## Folder Structure
+Follow these steps to set up the environment and run the pipeline:
 
+### 1. Prerequisites
+Ensure you have **Python 3.9+** installed. This project requires significant RAM for processing 720-megapixel images (16GB+ recommended).
+
+### 2. Install Dependencies
+Run the following commands to install the required scientific and image processing libraries:
+
+```bash
+pip install numpy opencv-python matplotlib tifffile imagecodecs rasterio scipy
 ```
+
+> [!NOTE]
+> `imagecodecs` and `tifffile` are essential for handling 16-bit LROC NAC depth without photometric loss. `rasterio` is used for GeoTIFF metadata extraction.
+
+### 3. Folder Preparation
+Ensure the following directory structure exists in your project root:
+```text
 crater_project/
-│
-├── data/               # Input data storage
-│   ├── raw/            # Original source images
-│   ├── processed/      # Normalized and cropped images
-│
-├── src/                # Source code modules
-│   ├── __init__.py
-│   ├── preprocess.py   # Image loading and preparation
-│   ├── guide_params.py # Parameter estimation
-│   ├── detection.py    # Candidate detection
-│   ├── fitting.py      # Geometric fitting
-│   ├── pixel_flagging.py # Duplicate prevention
-│   ├── templates.py    # Template matching logic
-│   ├── matching.py     # Multi-image matching
-│   ├── csfd.py         # Statistical analysis
-│   ├── utils.py        # Utility functions
-│
-├── outputs/            # Pipeline products
-│   ├── crater_lists/   # CSV/JSON lists of detected craters
-│   ├── plots/          # CSFD and analysis plots
-│   ├── overlays/       # Images with detected craters drawn
-│
-├── main.py             # Main execution script
-├── requirements.txt    # Python dependencies
-├── README.md           # Documentation
-└── config.py           # Configuration and hyperparameters
+├── data/
+│   ├── raw/             <-- Place your .tif images here
+│   └── processed/
+├── outputs/
+│   ├── crater_lists/    <-- Results (CSV, .diam) will be here
+│   ├── plots/           <-- CSFD and Density maps
+│   └── overlays/        <-- Visual confirmation images
+└── src/                 <-- All source modules
 ```
 
-## Setup Instructions
+### 4. Configuration
+Edit `config.py` to match your specific landing site parameters:
+- `PIXEL_SIZE_METERS`: Set to `0.5` for LROC NAC.
+- `ROI_RADIUS_METERS`: Radius of the analysis area (e.g., `500` for 500m Landing Zone).
+- `MIN_VIEWS_FOR_CERT`: Set to `2` for scientific certification.
 
-1. **Clone the repository**:
-   ```bash
-   git clone <repository-url>
-   cd crater_project
-   ```
-
-2. **Create a virtual environment**:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-
-3. **Install dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-## Key Research Implementation (Ganesh et al., 2022)
-
-The system is now fully implemented and aligned with the methodologies described in the research paper *"Automated precision counting of very small craters at lunar landing sites"*.
-
-### **Advanced Features:**
-- **Iterative Sub-pixel Fitting**: Refines crater centers and diameters using a contrast-maximization algorithm with 0.5-pixel precision.
-- **Freshness Classification**: Automatically categorizes craters into five freshness classes (**Prominent, Sharp, Distinct, Faint, Vague**) based on photometric analysis.
-- **Multi-Image Certification**: Uses robust matching across multiple views (w/ XY Discrepancy Map correction) to eliminate false positives.
-- **Enhanced CSFD**: Generates log-log cumulative size-frequency plots with standardized **sqrt(N) error bars**.
-- **Spatial Density Maps**: Visualizes crater concentrations across the landing site.
-
-## How to Run
-
-To run the full detection and analysis pipeline:
-
+### 5. Running the Pipeline
+Place your target `.tif` images in `data/raw/` and execute:
 ```bash
 python main.py
 ```
 
-*The pipeline will process images in `data/raw`, generate certified catalogs in `outputs/crater_lists`, and produce scientific plots in `outputs/plots`.*
+---
 
-## License
+## 🔬 Scientific Methodology
 
-Research Use Only.
+This implementation aligns with the **Ganesh et al. (2022)** research-grade standard:
+1.  **16-bit Preservation**: Full dynamic range (0-65535 DN) is used for shadow detection.
+2.  **Overlapping Strips**: 2000px strips with 200px overlap solve for boundary artifacts.
+3.  **Adaptive Thresholding**: Global thresholds are replaced with local 15th-percentile shadow detection per strip.
+4.  **Multi-View Certification**: Craters are only recorded if confirmed in $\ge 2$ independent images.
+5.  **Sub-pixel Accuracy**: Centers and diameters are refined via iterative contrast maximization.
+
+## 📊 Outputs
+- **`research_catalog.csv`**: Full list of certified craters (X, Y, Diameter (m), Freshness).
+- **`csfd_plot_research.png`**: Scientific plot with Poisson error bars.
+- **`research_final_overlay.png`**: High-resolution image with all detections drawn.
+- **`.diam` Export**: Standard format compatible with **Craterstats 2.0**.
+
+---
+*Developed for the DIP Lunar Landing Safety Project.*
