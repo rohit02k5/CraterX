@@ -1,49 +1,51 @@
 import matplotlib.pyplot as plt
-
-import numpy as np
-
-import matplotlib.pyplot as plt
 import numpy as np
 import os
 
-def plot_enhanced_csfd(diams, area_km2=1.0, title="Crater Size-Frequency Distribution (CSFD)"):
+def plot_enhanced_csfd(diams_meters, area_km2, save_path):
     """
-    Plots the CSFD with sqrt(N) error bars as standard in lunar science.
+    Plots a scientifically valid CSFD (Cumulative Size-Frequency Distribution).
+    Exports .diam file for Craterstats analysis.
     """
-    if not diams:
-        print("No craters to plot.")
+    if len(diams_meters) == 0:
+        print("[WARN] No craters to plot CSFD.")
         return
-        
-    diams = np.sort(np.array(diams))
-    n = len(diams)
+
+    # Export .diam file (Standard planetary science format)
+    diam_file = save_path.replace(".png", ".diam")
+    # Sort descending for .diam conventionally or just standard list
+    with open(diam_file, "w") as f:
+        f.write("# Diameter (m)\n")
+        f.write(f"# Area (km2): {area_km2:.6f}\n")
+        for d in sorted(diams_meters, reverse=True):
+            f.write(f"{d:.4f}\n")
+    print(f"[INFO] Exported .diam file to {diam_file}")
+
+    # Calculate cumulative statistics
+    unique_diams = np.sort(np.unique(diams_meters))
+    counts = []
+    errors = []
     
-    # Cumulative counts: N > D
-    # We plot it from largest to smallest to get the cumulative effect properly
-    unique_diams = np.unique(diams)
-    cumulative_counts = []
     for d in unique_diams:
-        count = np.sum(diams >= d)
-        cumulative_counts.append(count)
+        N = np.sum(diams_meters >= d)
+        # N(D) per km2
+        counts.append(N / area_km2)
+        # Poisson Error: sqrt(N) / Area
+        errors.append(np.sqrt(N) / area_km2)
+
+    # Visualization
+    plt.figure(figsize=(8, 6))
+    plt.errorbar(unique_diams, counts, yerr=errors, fmt='o', color='red', ecolor='gray', 
+                 capsize=2, label='Detections (m)')
     
-    cumulative_counts = np.array(cumulative_counts)
-    y = cumulative_counts / area_km2
-    x = unique_diams
-    
-    # Poisson error: sqrt(N)
-    y_err = (np.sqrt(cumulative_counts) / area_km2)
-    
-    plt.figure(figsize=(10, 8))
-    plt.errorbar(x, y, yerr=y_err, fmt='bo', markersize=3, capsize=2, label='Detected Craters', alpha=0.7)
-    plt.loglog(x, y, 'b-')
-    
-    plt.xlabel("Diameter D (m)", fontsize=12)
-    plt.ylabel("Cumulative Frequency N(D) per km²", fontsize=12)
-    plt.title(title, fontsize=14)
-    plt.grid(True, which="both", ls="-", alpha=0.3)
+    plt.xscale('log')
+    plt.yscale('log')
+    plt.xlabel('Diameter D (m)')
+    plt.ylabel('Cumulative Frequency N(D) (km$^{-2}$)')
+    plt.title('Crater Size-Frequency Distribution')
+    plt.grid(True, which="both", ls="-", alpha=0.5)
     plt.legend()
     
-    os.makedirs("outputs/plots", exist_ok=True)
-    save_path = "outputs/plots/csfd_plot_enhanced.png"
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
     plt.savefig(save_path, dpi=300)
     plt.close()
-    print(f"Enhanced CSFD plot saved to {save_path}")

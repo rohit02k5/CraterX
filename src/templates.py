@@ -1,121 +1,90 @@
 import numpy as np
+import cv2
 
 def extract_patch(img, cx, cy, d):
+    """
+    Extracts a square patch centered on (cx, cy) with size based on diameter d.
+    """
     cx, cy = int(cx), int(cy)
-    r = int(d) // 2
-    if r < 1: r = 1
-    
-    y_min, y_max = cy - r, cy + r
-    x_min, x_max = cx - r, cx + r
-    
+    r = int(d) // 2 + 5 # Add margin
     h, w = img.shape
-    patch = np.zeros((2*r, 2*r), dtype=img.dtype) + int(np.mean(img))
     
-    # Calculate valid slice in image
-    iy_min, iy_max = max(0, y_min), min(h, y_max)
-    ix_min, ix_max = max(0, x_min), min(w, x_max)
+    y1, y2 = max(0, cy - r), min(h, cy + r)
+    x1, x2 = max(0, cx - r), min(w, cx + r)
     
-    # Calculate valid slice in patch
-    py_min = max(0, -y_min)
-    py_max = py_min + (iy_max - iy_min)
-    px_min = max(0, -x_min)
-    px_max = px_min + (ix_max - ix_min)
-    
-    if iy_max > iy_min and ix_max > ix_min:
-        patch[py_min:py_max, px_min:px_max] = img[iy_min:iy_max, ix_min:ix_max]
+    return img[y1:y2, x1:x2]
+
+def classify_freshness(patch, diameter):
+    """
+    Scale-invariant freshness classification (Section 2.4).
+    Uses shadow-highlight contrast ratio normalized by diameter.
+    """
+    if patch.size == 0 or diameter == 0:
+        return "Vague"
         
-    return patch
-
-
-FRESHNESS_CLASSES = ["Prominent", "Sharp", "Distinct", "Faint", "Vague"]
-
-def classify_freshness(patch):
-    """
-    Classifies a crater patch into one of five freshness classes (Section 2.4).
-    Based on the standard deviation and max contrast within the patch.
-    """
-    if patch.size == 0: return "Vague"
+    # Section 2.4.1: Contrast ratio metric
+    min_val, max_val, _, _ = cv2.minMaxLoc(patch)
+    contrast = max_val - min_val
+    metric = contrast / (diameter + 1e-6) # Normalize by diameter to be scale-invariant
     
-    std = np.std(patch)
-    # Normed contrast between center and rim
-    # For a simple heuristic: standard deviation is a good proxy for 'sharpness'
-    if std > 60: return "Prominent"
-    if std > 45: return "Sharp"
-    if std > 30: return "Distinct"
-    if std > 15: return "Faint"
+    if metric > 25: return "Prominent"
+    if metric > 15: return "Sharp"
+    if metric > 8: return "Distinct"
+    if metric > 4: return "Faint"
     return "Vague"
 
-
-def build_class_templates(craters, img):
+def build_class_templates(crater_catalog, images):
     """
-    Builds a library of templates grouped by diameter and freshness class.
+    Builds the template library by averaging patches from the specific images they originated from.
     """
-    templates = {cls: {} for cls in FRESHNESS_CLASSES}
-
-    for c in craters:
-        cx, cy, d = c
-        d_int = int(d)
-        if d_int % 2 != 0: d_int += 1
+    # library[freshness][diameter]
+    library = {f: {} for f in ["Prominent", "Sharp", "Distinct", "Faint", "Vague"]}
+    temp_bins = {f: {} for f in ["Prominent", "Sharp", "Distinct", "Faint", "Vague"]}
+    
+    # Crater catalog format: (cx, cy, d, freshness, image_idx)
+    for c in crater_catalog:
+        cx, cy, d, f, img_idx = c
+        img = images[img_idx]
+        patch = extract_patch(img, cx, cy, d)
+        if patch.size == 0: continue
         
-        patch = extract_patch(img, cx, cy, d_int)
-        freshness = classify_freshness(patch)
-
-        if d_int not in templates[freshness]:
-            templates[freshness][d_int] = []
-
-        templates[freshness][d_int].append(patch)
-
-    final_templates = {cls: {} for cls in FRESHNESS_CLASSES}
-    for cls in FRESHNESS_CLASSES:
-        for d in templates[cls]:
-            shape = templates[cls][d][0].shape
-            valid_patches = [p for p in templates[cls][d] if p.shape == shape]
-            if valid_patches:
-                final_templates[cls][int(d)] = np.mean(valid_patches, axis=0)
-
-    return final_templates
-
-
-def refine_with_freshness_templates(craters, class_templates, img):
-    """
-    Refines crater positions using the class-specific templates.
-    """
-    import cv2
-    refined = []
-
-    for c in craters:
-        cx, cy, d = c
-        d_int = int(d)
+        d_bin = int(d)
+        patch_resized = cv2.resize(patch, (d_bin+10, d_bin+10))
         
-        # Determine freshness to pick the right template
-        temp_patch = extract_patch(img, cx, cy, d_int)
-        freshness = classify_freshness(temp_patch)
-
-        if d_int not in class_templates[freshness]:
-            # Try nearest freshness if exact match not found? 
-            # Or just fall back to generic
-            refined.append((*c, freshness))
-            continue
-
-        template = class_templates[freshness][d_int]
-        win = 5
-        cx_i, cy_i = int(cx), int(cy)
-        r = d_int // 2
+        if d_bin not in temp_bins[f]: temp_bins[f][d_bin] = []
+        temp_bins[f][d_bin].append(patch_resized)
         
-        y_min, y_max = max(0, cy_i - r - win), min(img.shape[0], cy_i + r + win)
-        x_min, x_max = max(0, cx_i - r - win), min(img.shape[1], cx_i + r + win)
-        
-        search_area = img[y_min:y_max, x_min:x_max]
-        if search_area.shape[0] < template.shape[0] or search_area.shape[1] < template.shape[1]:
-            refined.append((*c, freshness))
-            continue
+    for f in temp_bins:
+        for db in temp_bins[f]:
+            library[f][db] = np.mean(temp_bins[f][db], axis=0).astype(np.float32)
             
-        res = cv2.matchTemplate(search_area.astype(np.uint8), template.astype(np.uint8), cv2.TM_CCOEFF_NORMED)
-        _, _, _, max_loc = cv2.minMaxLoc(res)
-        
-        new_cx = x_min + max_loc[0] + r
-        new_cy = y_min + max_loc[1] + r
-        
-        refined.append((new_cx, new_cy, d, freshness))
+    return library
 
+def refine_with_freshness_templates(certified_craters, images, class_templates):
+    """
+    Refines detection coordinates by matching against class templates.
+    """
+    refined = []
+    for c in certified_craters:
+        # Expected input format: (cx, cy, d, freshness, img_idx)
+        cx, cy, d, f, img_idx = c
+        img = images[img_idx]
+        
+        template = class_templates.get(f, {}).get(int(d), None)
+        if template is not None:
+            # Search in a small window
+            margin = 5
+            patch = extract_patch(img, cx, cy, d + 2*margin)
+            if patch.shape[0] >= template.shape[0] and patch.shape[1] >= template.shape[1]:
+                res = cv2.matchTemplate(patch.astype(np.float32), template, cv2.TM_CCOEFF_NORMED)
+                _, _, _, max_loc = cv2.minMaxLoc(res)
+                
+                # Update cx, cy based on peak
+                cx_ref = cx + (max_loc[0] - margin)
+                cy_ref = cy + (max_loc[1] - margin)
+                refined.append((cx_ref, cy_ref, d, f))
+                continue
+        
+        refined.append((cx, cy, d, f))
+        
     return refined

@@ -1,87 +1,81 @@
 import numpy as np
 import cv2
 
-def detect_lowlights(img, min_area=5, contrast_limit=47):
+def detect_lowlights(img, min_area=5, contrast_limit=47, min_diameter=3, shadow_percentile=15):
     """
-    Detects lowlight regions (shadows) and filters them based on a contrast limit.
+    Performance-optimized shadow detection.
     """
-    # Threshold for dark regions (lowlights)
-    # The paper mentions scanning for dark areas below a threshold.
-    # We use a percentile to adapt to image normalization.
-    thresh_val = np.percentile(img, 15) 
-    mask = img <= thresh_val
+    h, w = img.shape
+    thresh_val = np.percentile(img, shadow_percentile) 
+    mask = (img <= thresh_val).astype(np.uint8)
     
-    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(mask.astype(np.uint8))
+    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(mask)
     
     lowlights = []
     for i in range(1, num_labels):
         area = stats[i, cv2.CC_STAT_AREA]
-        if area < min_area:
+        if area < min_area: continue
+            
+        x_min, y_min = stats[i, cv2.CC_STAT_LEFT], stats[i, cv2.CC_STAT_TOP]
+        width, height = stats[i, cv2.CC_STAT_WIDTH], stats[i, cv2.CC_STAT_HEIGHT]
+        
+        if max(width, height) < min_diameter: continue
+        if min(width, height) / max(width, height) < 0.2: continue
+            
+        # Extract LOCAL mask for this label to avoid full-image ops
+        y_max, x_max = y_min + height, x_min + width
+        roi_labels = labels[y_min:y_max, x_min:x_max]
+        roi_img = img[y_min:y_max, x_min:x_max]
+        
+        local_mask = (roi_labels == i)
+        shadow_mean = np.mean(roi_img[local_mask])
+        
+        # Local background contrast (Section 2.3.4)
+        local_win = int(max(width, height) * 1.5)
+        by1, by2 = max(0, y_min - local_win), min(h, y_max + local_win)
+        bx1, bx2 = max(0, x_min - local_win), min(w, x_max + local_win)
+        local_mean = np.mean(img[by1:by2, bx1:bx2])
+        
+        if (local_mean - shadow_mean) < contrast_limit:
             continue
             
-        # Get pixels for this label
-        mask_i = (labels == i)
-        pixels = img[mask_i]
+        # Only now calculate full pixel coords (offset by ROI)
+        ys, xs = np.where(local_mask)
+        pixels_coords = np.column_stack((ys + y_min, xs + x_min))
         
-        # Contrast limit check (Paper Section 2.3.4)
-        # Craters with very low contrast are likely noise or too faint.
-        local_mean = np.mean(img[max(0, int(centroids[i][1]-10)):min(img.shape[0], int(centroids[i][1]+10)),
-                                 max(0, int(centroids[i][0]-10)):min(img.shape[1], int(centroids[i][0]+10))])
-        local_contrast = local_mean - np.mean(pixels)
-        
-        if local_contrast < contrast_limit:
-            continue
-
-        contours, _ = cv2.findContours(mask_i.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        if not contours: continue
-        
-        cnt = contours[0]
-        perimeter = cv2.arcLength(cnt, True)
-        if perimeter == 0: continue
-        
-        circularity = 4 * np.pi * area / (perimeter * perimeter)
-        centroid = centroids[i]  # (cx, cy)
-        
-        if circularity > 0.2: # Paper allows slightly irregular shapes for small craters
-            lowlights.append((np.column_stack(np.where(mask_i)), (centroid[1], centroid[0])))
+        cy, cx = int(centroids[i, 1]), int(centroids[i, 0])
+        lowlights.append((pixels_coords, (cy, cx)))
 
     return lowlights
 
 
 def find_highlight(img, low, guide_dir, guide_dist):
     """
-    Finds the corresponding sunlit rim (highlight) for a given shadow.
+    Scale-aware highlight search avoiding absolute thresholds.
     """
-    _, (cy, cx) = low
+    if guide_dir is None or guide_dist == 0:
+        return None
+
+    pixels_coords, (cy, cx) = low
     h, w = img.shape
 
-    try:
-        gnorm = np.linalg.norm(guide_dir)
-    except:
-        return None
-        
-    if gnorm == 0:
-        return None
-        
-    # Expected highlight position
-    ex_x = cx + (guide_dir[0] / gnorm) * guide_dist
-    ex_y = cy + (guide_dir[1] / gnorm) * guide_dist
+    # Expected highlight position based on sun vector
+    ex_y = cy + guide_dir[1] * guide_dist
+    ex_x = cx + guide_dir[0] * guide_dist
 
-    # Search window (Section 2.2.3)
-    # The search window size should be proportional to the expected distance
-    win = max(5, int(guide_dist * 0.5))
-    y_min, y_max = max(0, int(ex_y - win)), min(h, int(ex_y + win))
-    x_min, x_max = max(0, int(ex_x - win)), min(w, int(ex_x + win))
+    # Search window scales with expected crater size
+    win = max(5, int(guide_dist * 0.7))
+    y1, y2 = max(0, int(ex_y - win)), min(h, int(ex_y + win))
+    x1, x2 = max(0, int(ex_x - win)), min(w, int(ex_x + win))
     
-    search_region = img[y_min:y_max, x_min:x_max]
-    if search_region.size == 0:
-        return None
+    region = img[y1:y2, x1:x2]
+    if region.size == 0: return None
 
-    _, max_val, _, max_loc = cv2.minMaxLoc(search_region)
+    _, max_val, _, max_loc = cv2.minMaxLoc(region)
     
-    # Paper mentions highlights must be significantly brighter than the shadow and surroundings
-    # We use a relative threshold or a fixed high value
-    if max_val < 100: 
+    # Highlight must be significantly brighter than the shadow (no absolute threshold)
+    shadow_val = np.mean(img[pixels_coords[:, 0], pixels_coords[:, 1]])
+    if max_val < shadow_val + 40: # Relative DN threshold
         return None
 
-    return (max_loc[1] + y_min, max_loc[0] + x_min) # (y, x)
+    return (max_loc[1] + y1, max_loc[0] + x1) # 返回(y, x)

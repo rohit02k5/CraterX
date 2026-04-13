@@ -1,54 +1,31 @@
 """
 Utility functions for the Lunar Crater Detection System.
 """
-
 import numpy as np
 from typing import Tuple
 
-def distance(p1: Tuple[float, float], p2: Tuple[float, float]) -> float:
+def haversine_distance(p1: Tuple[float, float], p2: Tuple[float, float], radius=1737400) -> float:
     """
-    Calculates Euclidean distance between two points.
+    Calculates the great-circle distance between two points on a sphere (e.g. Moon).
+    Default radius is the mean radius of the Moon in meters.
     
     Args:
-        p1: (y, x) coordinate.
-        p2: (y, x) coordinate.
+        p1: (lat, lon) or (y, x) if projected.
+        p2: (lat, lon) or (y, x) if projected.
+        radius: Sphere radius.
         
     Returns:
-        The distance between the points.
+        Distance in meters.
     """
-    return float(np.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2))
-
-def normalize_vector(v: np.ndarray) -> np.ndarray:
-    """
-    Normalizes a vector to unit length.
+    phi1, phi2 = np.radians(p1[0]), np.radians(p2[0])
+    dphi = np.radians(p2[0] - p1[0])
+    dlambda = np.radians(p2[1] - p1[1])
     
-    Args:
-        v: Input numpy array.
-        
-    Returns:
-        Unit vector.
-    """
-    norm = np.linalg.norm(v)
-    if norm == 0:
-        return v
-    return v / norm
-
-def setup_logging(log_level: str = "INFO"):
-    """
-    Sets up basic logging configuration.
+    a = np.sin(dphi/2)**2 + np.cos(phi1) * np.cos(phi2) * np.sin(dlambda/2)**2
+    c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1-a))
     
-    Args:
-        log_level: Desired log level (e.g., "DEBUG", "INFO").
-    """
-    import logging
-    logging.basicConfig(level=log_level, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    print(f"Logging set to {log_level}")
+    return radius * c
 
 def log_progress(message: str):
-    """
-    Logs a progress message.
-    
-    Args:
-        message: The message to log.
-    """
+    """Logs a progress message."""
     print(f"[PROGRESS] {message}")
