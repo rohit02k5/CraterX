@@ -1,5 +1,6 @@
 import numpy as np
 import cv2
+from scipy.spatial import cKDTree
 
 def register_images_global(img1, img2):
     """
@@ -25,12 +26,28 @@ def match_craters_multi_view_optimized(all_craters_lists, thumbnails, thumb_scal
 
     certified = []
     
+    # Pre-build KD-Trees for ultra-fast spatial querying
+    trees = []
+    for lst in all_craters_lists:
+        if len(lst) > 0:
+            # Create a 2D array of (cx, cy) for KDTree
+            pts = np.array([[c[0], c[1]] for c in lst], dtype=np.float32)
+            trees.append(cKDTree(pts))
+        else:
+            trees.append(None)
+            
     # 1. Gather all unique candidates from ALL images
     # We'll use image 0 as our coordinate frame for the final catalog
     ref_thumb = thumbnails[0]
     
     # Track which candidates are already accounted for to avoid duplicates in the union
     certified_mask_indices = [set() for _ in range(len(all_craters_lists))]
+
+    # Pre-compute all relative offsets once
+    global_offsets = []
+    for thumb in thumbnails:
+        dx, dy = register_images_global(ref_thumb, thumb)
+        global_offsets.append((dx / thumb_scale, dy / thumb_scale))
 
     for i in range(len(all_craters_lists)):
         curr_list = all_craters_lists[i]
@@ -50,23 +67,20 @@ def match_craters_multi_view_optimized(all_craters_lists, thumbnails, thumb_scal
             for j in range(len(all_craters_lists)):
                 if i == j: continue
                 other_list = all_craters_lists[j]
-                other_thumb = thumbnails[j]
                 
-                # Relative offset i -> j
-                # We can use the global ref as intermediate
-                dx_ref_j, dy_ref_j = register_images_global(ref_thumb, other_thumb)
-                dx_ref_j, dy_ref_j = dx_ref_j / thumb_scale, dy_ref_j / thumb_scale
+                # Relative offset i -> j (Precomputed)
+                dx_ref_j, dy_ref_j = global_offsets[j]
                 
                 # Transform c1 to image j coords
                 # c1_in_ref = c1 - dx_glob_i
                 # c1_in_j = c1_in_ref + dx_glob_j
                 tx, ty = c1[0] - dx_glob + dx_ref_j, c1[1] - dy_glob + dy_ref_j
                 
-                # Local correction and robust match
-                loc_dx, loc_dy = compute_local_registration_offset(tx, ty, other_list)
+                # Local correction and robust match using pre-built KDTree
+                loc_dx, loc_dy = compute_local_registration_offset(tx, ty, trees[j], other_list)
                 target = (tx + loc_dx, ty + loc_dy, c1[2])
                 
-                m_idx = find_robust_match_index(target, other_list)
+                m_idx = find_robust_match_index(target, trees[j], other_list)
                 if m_idx is not None:
                     match_count += 1
                     matched_indices.append((j, m_idx))
@@ -81,22 +95,32 @@ def match_craters_multi_view_optimized(all_craters_lists, thumbnails, thumb_scal
             
     return certified
 
-def find_robust_match_index(c1, others):
+def find_robust_match_index(c1, others_tree, others_data):
+    if others_tree is None: return None
     cx1, cy1, d1 = c1[:3]
-    for idx, c2 in enumerate(others):
-        cx2, cy2, d2 = c2[:3]
-        dist = np.sqrt((cx1 - cx2)**2 + (cy1 - cy2)**2)
-        pos_tol = max(4.0, 0.15 * d1)
-        if dist < pos_tol and abs(d1 - d2) < 0.2 * d1:
+    pos_tol = max(4.0, 0.15 * d1)
+    
+    # O(log N) fast spatial query
+    indices = others_tree.query_ball_point((cx1, cy1), pos_tol)
+    
+    for idx in indices:
+        c2 = others_data[idx]
+        d2 = c2[2]
+        if abs(d1 - d2) < 0.2 * d1:
             return idx
     return None
 
-def compute_local_registration_offset(cx, cy, others):
+def compute_local_registration_offset(cx, cy, others_tree, others_data):
+    if others_tree is None: return 0, 0
+    
+    # O(log N) fast spatial query
+    indices = others_tree.query_ball_point((cx, cy), 100)
+    
     offsets = []
-    for c2 in others:
-        dist = np.sqrt((cx - c2[0])**2 + (cy - c2[1])**2)
-        if dist < 100: # Search neighborhood
-            offsets.append((c2[0] - cx, c2[1] - cy))
+    for idx in indices:
+        c2 = others_data[idx]
+        offsets.append((c2[0] - cx, c2[1] - cy))
+        
     if not offsets: return 0, 0
     return np.median(offsets, axis=0)
 

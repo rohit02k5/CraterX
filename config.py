@@ -27,4 +27,8 @@ IMAGE_METADATA = {
     "M135418902": {"angle": 46.42, "dir": "E", "scale": 0.40},
     "M150749234": {"angle": 65.31, "dir": "W", "scale": 0.40},
     "M175502049": {"angle": 57.78, "dir": "E", "scale": 0.35},
+    "synthetic_0": {"angle": 65.0, "dir": "W", "scale": 0.50},
+    "synthetic_1": {"angle": 65.0, "dir": "W", "scale": 0.50},
+    "synthetic_2": {"angle": 65.0, "dir": "W", "scale": 0.50},
+    "synthetic_3": {"angle": 65.0, "dir": "W", "scale": 0.50},
 }

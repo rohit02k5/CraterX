@@ -106,34 +106,60 @@ def main():
 
     # 4. Science Filtering & Visualization
     print("\n[4/4] Generating outputs...", flush=True)
-    roi_craters = [c for c in final_catalog if is_in_roi(c, (ROI_CENTER_X, ROI_CENTER_Y), ROI_RADIUS_METERS, PIXEL_SIZE_METERS)]
     
     os.makedirs("outputs/crater_lists", exist_ok=True)
     from src.utils import pixel_to_latlon
     transform = metadata[0].get('transform', None)
 
-    with open("outputs/crater_lists/research_catalog.csv", "w") as f:
+    # ================= FULL MAP OUTPUTS =================
+    full_craters = final_catalog
+    with open("outputs/crater_lists/research_catalog_FULL.csv", "w") as f:
+        f.write("x_px,y_px,lat,lon,diameter_m,freshness\n")
+        for c in full_craters:
+            lat, lon = pixel_to_latlon(c[0], c[1], transform)
+            f.write(f"{c[0]:.2f},{c[1]:.2f},{lat:.6f},{lon:.6f},{c[2]:.2f},{c[3]}\n")
+
+    area_km2_full = (ref_img.shape[0] * PIXEL_SIZE_METERS / 1000) * (ref_img.shape[1] * PIXEL_SIZE_METERS / 1000)
+    plot_enhanced_csfd([c[2] for c in full_craters], area_km2_full, "outputs/plots/csfd_plot_FULL.png")
+    plot_density_map(full_craters, ref_img.shape, PIXEL_SIZE_METERS, "outputs/plots/density_heatmap_FULL.png", roi=None)
+
+    overlay_full = cv2.normalize(ref_img, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+    overlay_full = cv2.cvtColor(overlay_full, cv2.COLOR_GRAY2BGR)
+    for c in full_craters:
+        cx, cy, d_m, f = c
+        d_px = max(2, d_m / PIXEL_SIZE_METERS)
+        # High-tech HUD visualization
+        # Inner exact crater size (Thin Bright Green)
+        cv2.circle(overlay_full, (int(cx), int(cy)), int(d_px/2), (0, 255, 0), 1)
+        # Outer target ring (Thick Cyan)
+        cv2.circle(overlay_full, (int(cx), int(cy)), int(d_px/2) + 10, (255, 255, 0), 2)
+    cv2.imwrite("outputs/overlays/research_overlay_FULL.png", overlay_full)
+
+    # ================= ROI ONLY OUTPUTS =================
+    roi_craters = [c for c in final_catalog if is_in_roi(c, (ROI_CENTER_X, ROI_CENTER_Y), ROI_RADIUS_METERS, PIXEL_SIZE_METERS)]
+    with open("outputs/crater_lists/research_catalog_ROI.csv", "w") as f:
         f.write("x_px,y_px,lat,lon,diameter_m,freshness\n")
         for c in roi_craters:
             lat, lon = pixel_to_latlon(c[0], c[1], transform)
             f.write(f"{c[0]:.2f},{c[1]:.2f},{lat:.6f},{lon:.6f},{c[2]:.2f},{c[3]}\n")
 
-    area_km2 = calculate_roi_area_km2(ROI_RADIUS_METERS)
-    plot_enhanced_csfd([c[2] for c in roi_craters], area_km2, "outputs/plots/csfd_plot_research.png")
-    plot_density_map(roi_craters, ref_img.shape, PIXEL_SIZE_METERS, "outputs/plots/density_heatmap.png", 
-                    roi=(ROI_CENTER_X, ROI_CENTER_Y, ROI_RADIUS_METERS))
+    area_km2_roi = calculate_roi_area_km2(ROI_RADIUS_METERS)
+    plot_enhanced_csfd([c[2] for c in roi_craters], area_km2_roi, "outputs/plots/csfd_plot_ROI.png")
+    plot_density_map(roi_craters, ref_img.shape, PIXEL_SIZE_METERS, "outputs/plots/density_heatmap_ROI.png", roi=(ROI_CENTER_X, ROI_CENTER_Y, ROI_RADIUS_METERS))
 
-    # ROI Overlay
-    overlay = cv2.normalize(ref_img, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
-    overlay = cv2.cvtColor(overlay, cv2.COLOR_GRAY2BGR)
-    cv2.circle(overlay, (ROI_CENTER_X, ROI_CENTER_Y), int(ROI_RADIUS_METERS/PIXEL_SIZE_METERS), (0, 0, 255), 3)
+    overlay_roi = cv2.normalize(ref_img, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+    overlay_roi = cv2.cvtColor(overlay_roi, cv2.COLOR_GRAY2BGR)
+    cv2.circle(overlay_roi, (ROI_CENTER_X, ROI_CENTER_Y), int(ROI_RADIUS_METERS/PIXEL_SIZE_METERS), (0, 0, 255), 3)
     for c in roi_craters:
         cx, cy, d_m, f = c
-        d_px = d_m / PIXEL_SIZE_METERS
-        cv2.circle(overlay, (int(cx), int(cy)), int(d_px/2), (0, 255, 0), 1)
-        cv2.putText(overlay, f[0], (int(cx), int(cy)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
-    
-    cv2.imwrite("outputs/overlays/research_final_overlay.png", overlay)
+        d_px = max(2, d_m / PIXEL_SIZE_METERS)
+        # High-tech HUD visualization
+        cv2.circle(overlay_roi, (int(cx), int(cy)), int(d_px/2), (0, 255, 0), 1)
+        cv2.circle(overlay_roi, (int(cx), int(cy)), int(d_px/2) + 10, (255, 255, 0), 2)
+        # HUD Text Label
+        cv2.putText(overlay_roi, f[0], (int(cx) + 12, int(cy) + 12), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
+    cv2.imwrite("outputs/overlays/research_overlay_ROI.png", overlay_roi)
+
     print("\nProcessing Complete.", flush=True)
 
 if __name__ == "__main__":
