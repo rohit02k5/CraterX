@@ -38,7 +38,7 @@ def get_thumbnail(path, scale=0.1):
 
 def load_single_image(path):
     """
-    Loads one image into float32.
+    Loads one image into float32 at native resolution.
     """
     img = tifffile.imread(path)
     return img.astype(np.float32)

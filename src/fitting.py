@@ -4,10 +4,10 @@ import numpy as np
 # Assuming config is available or we pass the scale
 from config import PIXEL_SIZE_METERS
 
-def fit_crater(img, low, highlight_pt):
+def fit_crater(img, low, highlight_pt, pixel_scale=0.5):
     """
     Refines crater center and diameter using iterative contrast-maximization.
-    Returns (cx, cy, d_meters) or None if no valid fit.
+    Returns (cx, cy, d_meters, freshness) or None if no valid fit.
     """
     pixels_coords, (cy_low, cx_low) = low
     hy, hx = highlight_pt
@@ -44,7 +44,7 @@ def fit_crater(img, low, highlight_pt):
         
     # Return 4-tuple: (cx, cy, d_meters, freshness=None) 
     # Conversion to meters happens here for scientific consistency.
-    return (best_cx, best_cy, best_d * PIXEL_SIZE_METERS, None)
+    return (best_cx, best_cy, best_d * pixel_scale, None)
 
 
 def evaluate_contrast_fast(img, cx, cy, r, sun_dir):

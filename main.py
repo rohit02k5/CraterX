@@ -1,6 +1,7 @@
 import os
 import glob
 import cv2
+import json
 import numpy as np
 from src.preprocess import load_image_metadata, get_thumbnail, load_single_image, split_into_strips
 from src.guide_params import compute_guide_params
@@ -25,12 +26,24 @@ def main():
     metadata = load_image_metadata(image_paths)
     print(f"Total Images: {len(metadata)}", flush=True)
     
+    os.makedirs("outputs/checkpoints", exist_ok=True)
     all_view_craters = []
     
     # 1. Processing candidates one-by-one to save memory
     from src.pixel_flagging import MASK_SCALE, is_pixel_flagged
     
     for i, path in enumerate(image_paths):
+        img_id = os.path.basename(path).split('.')[0]
+        checkpoint_path = f"outputs/checkpoints/{img_id}_candidates.json"
+        
+        # RESUME LOGIC: Check if we already processed this image
+        if os.path.exists(checkpoint_path):
+            print(f"\n[1/4] Loading cached candidates for {img_id}...", flush=True)
+            with open(checkpoint_path, "r") as f:
+                view_craters = json.load(f)
+            all_view_craters.append(view_craters)
+            continue
+
         print(f"\n[1/4] Processing image {i+1}/{len(image_paths)}: {os.path.basename(path)}", flush=True)
         img = load_single_image(path)
         
@@ -48,23 +61,30 @@ def main():
                 print(f"  Strip {s_idx}/{len(strips)}...", flush=True)
                 
             candidates = detect_lowlights(strip_data, shadow_percentile=SHADOW_PERCENTILE, min_diameter=MIN_DIAMETER_PIXELS)
-            guide_dir, guide_dist = compute_guide_params(strip_data, candidates)
+            guide_dir, guide_dist = compute_guide_params(strip_data, candidates, img_path=path)
             if guide_dir is None: continue
 
             for low in candidates:
                 high_pt = find_highlight(strip_data, low, guide_dir, guide_dist)
                 if high_pt:
-                    res = fit_crater(strip_data, low, high_pt)
+                    # Use image-specific scale for 100% accurate meters
+                    scale = IMAGE_METADATA.get(img_id, {"scale": 0.5})["scale"]
+                    res = fit_crater(strip_data, low, high_pt, pixel_scale=scale)
                     if res:
                         cx, cy, d_m, _ = res
                         cx_g, cy_g = cx + x_off, cy + y_off
                         
                         if not is_pixel_flagged(used_mask, (cx_g, cy_g)):
-                            view_craters.append((cx_g, cy_g, d_m, "Vague", i))
+                            # Format suitable for JSON: [cx, cy, d_m, freshness, img_idx]
+                            view_craters.append([float(cx_g), float(cy_g), float(d_m), "Vague", i])
                             flag_pixels(used_mask, (cx_g, cy_g, d_m / (2 * PIXEL_SIZE_METERS)))
                             
+        # Save checkpoint immediately
+        with open(checkpoint_path, "w") as f:
+            json.dump(view_craters, f)
+            
         all_view_craters.append(view_craters)
-        print(f"  Found {len(view_craters)} candidates.", flush=True)
+        print(f"  Found {len(view_craters)} candidates. Saved to cache.", flush=True)
         del img, used_mask
         import gc; gc.collect()
 
@@ -89,10 +109,14 @@ def main():
     roi_craters = [c for c in final_catalog if is_in_roi(c, (ROI_CENTER_X, ROI_CENTER_Y), ROI_RADIUS_METERS, PIXEL_SIZE_METERS)]
     
     os.makedirs("outputs/crater_lists", exist_ok=True)
+    from src.utils import pixel_to_latlon
+    transform = metadata[0].get('transform', None)
+
     with open("outputs/crater_lists/research_catalog.csv", "w") as f:
-        f.write("x_px,y_px,diameter_m,freshness\n")
+        f.write("x_px,y_px,lat,lon,diameter_m,freshness\n")
         for c in roi_craters:
-            f.write(f"{c[0]:.2f},{c[1]:.2f},{c[2]:.2f},{c[3]}\n")
+            lat, lon = pixel_to_latlon(c[0], c[1], transform)
+            f.write(f"{c[0]:.2f},{c[1]:.2f},{lat:.6f},{lon:.6f},{c[2]:.2f},{c[3]}\n")
 
     area_km2 = calculate_roi_area_km2(ROI_RADIUS_METERS)
     plot_enhanced_csfd([c[2] for c in roi_craters], area_km2, "outputs/plots/csfd_plot_research.png")

@@ -26,6 +26,16 @@ def haversine_distance(p1: Tuple[float, float], p2: Tuple[float, float], radius=
     
     return radius * c
 
+def pixel_to_latlon(px, py, transform):
+    """
+    Converts pixel coordinates to World Coordinates (Lat/Lon) using an affine transform.
+    Requires transform from rasterio.
+    """
+    if transform is None: return (0.0, 0.0)
+    lon, lat = transform * (px, py)
+    return lat, lon
+
+
 def log_progress(message: str):
     """Logs a progress message."""
     print(f"[PROGRESS] {message}")

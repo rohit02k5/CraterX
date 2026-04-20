@@ -1,55 +1,23 @@
 import numpy as np
 import cv2
 
-def compute_guide_params(img, lowlights):
+def compute_guide_params(img, lowlights, img_path=""):
     """
-    Estimates average sun direction and typical shadow-highlight distance for a strip.
-    Uses adaptive logic to match shadows to highlights.
+    Metadata-informed parameter estimation. Skips expensive search loop.
     """
-    if not lowlights:
-        return None, 0.0
-
-    directions = []
-    distances = []
-    h, w = img.shape
+    from config import IMAGE_METADATA
+    import os
     
-    # Adaptive highlight threshold for this strip
-    high_threshold = np.percentile(img, 98)
+    # Extract ID (e.g., M127159138)
+    filename = os.path.basename(img_path).split('.')[0]
+    meta = IMAGE_METADATA.get(filename, {"angle": 65, "dir": "W", "scale": 0.5})
 
-    for low in lowlights[:100]: # Sample robustly
-        _, center = low
-        y_c, x_c = int(center[0]), int(center[1])
-        
-        # Search window for highlight relative to shadow scale
-        # Since we don't know the diameter yet, we use a slightly larger window
-        win = 40
-        y1, y2 = max(0, y_c - win), min(h, y_c + win)
-        x1, x2 = max(0, x_c - win), min(w, x_c + win)
-        region = img[y1:y2, x1:x2]
-        
-        if region.size == 0: continue
-        
-        _, max_val, _, max_loc = cv2.minMaxLoc(region)
-        
-        if max_val >= high_threshold:
-            dx = max_loc[0] - (x_c - x1)
-            dy = max_loc[1] - (y_c - y1)
-            dist = np.sqrt(dx**2 + dy**2)
-            
-            # Constraints: highlight must be within a reasonable crater geometry
-            if 3 < dist < win:
-                directions.append((dx, dy))
-                distances.append(dist)
-                
-    if not directions:
-        return None, 0.0
-        
-    avg_dir_vec = np.median(directions, axis=0)
-    avg_dist = np.median(distances)
+    # Convert Direction to Vector
+    # Sun from West (W) = Vector points East (+X)
+    dx = 1.0 if meta["dir"] == "W" else -1.0
+    avg_dir = np.array([dx, 0.0])
     
-    # Normalize direction
-    mag = np.linalg.norm(avg_dir_vec)
-    if mag == 0: return None, 0.0
-    avg_dir = avg_dir_vec / mag
+    # Shadow-to-Diameter ratio from Incidence Angle
+    avg_dist = 1.0 / np.tan(np.radians(meta["angle"])) 
     
     return avg_dir, avg_dist
