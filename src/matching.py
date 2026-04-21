@@ -1,6 +1,7 @@
 import numpy as np
 import cv2
 from scipy.spatial import cKDTree
+from config import MIN_VIEWS_FOR_CERT
 
 def register_images_global(img1, img2):
     """
@@ -85,9 +86,9 @@ def match_craters_multi_view_optimized(all_craters_lists, thumbnails, thumb_scal
                     match_count += 1
                     matched_indices.append((j, m_idx))
             
-            if match_count >= 2:
+            if match_count >= MIN_VIEWS_FOR_CERT:
                 # Use ref-frame coords for output
-                c_ref = [c1[0] - dx_glob, c1[1] - dy_glob, c1[2], "Vague", i]
+                c_ref = [c1[0] - dx_glob, c1[1] - dy_glob, c1[2], c1[3], i]
                 certified.append(c_ref)
                 # Mark as used across all images
                 for img_j, idx_j in matched_indices:

@@ -9,7 +9,7 @@ from src.detection import detect_lowlights, find_highlight
 from src.fitting import fit_crater
 from src.pixel_flagging import flag_pixels
 from src.matching import match_craters_multi_view_optimized
-from src.templates import build_class_templates, refine_with_freshness_templates
+from src.templates import build_class_templates, refine_with_freshness_templates, extract_patch, classify_freshness
 from src.csfd import plot_enhanced_csfd
 from src.visualization import plot_density_map
 from src.roi import calculate_roi_area_km2, is_in_roi
@@ -76,7 +76,10 @@ def main():
                         
                         if not is_pixel_flagged(used_mask, (cx_g, cy_g)):
                             # Format suitable for JSON: [cx, cy, d_m, freshness, img_idx]
-                            view_craters.append([float(cx_g), float(cy_g), float(d_m), "Vague", i])
+                            d_px = d_m / scale
+                            patch = extract_patch(strip_data, cx, cy, d_px)
+                            freshness = classify_freshness(patch, d_px)
+                            view_craters.append([float(cx_g), float(cy_g), float(d_m), freshness, i])
                             flag_pixels(used_mask, (cx_g, cy_g, d_m / (2 * PIXEL_SIZE_METERS)))
                             
         # Save checkpoint immediately
