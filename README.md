@@ -86,7 +86,11 @@ python main.py
 outputs/overlays/research_overlay_FULL.png  
 
 <img width="1744" height="872" alt="Screenshot 2026-04-28 151951" src="https://github.com/user-attachments/assets/16202323-3535-4af0-88da-ac95ebc8955a" />
+
+
 <img width="1179" height="838" alt="Screenshot 2026-04-28 152015" src="https://github.com/user-attachments/assets/ebfd0d14-9967-4660-b907-9d7d65810c0e" />
+
+
 <img width="1720" height="909" alt="Screenshot 2026-04-28 152200" src="https://github.com/user-attachments/assets/bc0ab0c9-ebd7-4d67-b5c2-5a21de50a63a" />
 
 
