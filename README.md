@@ -13,119 +13,98 @@
 ---
 
 ## 📖 Table of Contents
-- [Overview & Capabilities](#-overview--capabilities)
-- [Theoretical Alignment](#-theoretical-alignment)
-- [Folder Structure](#-folder-structure)
-- [Installation & Setup](#-installation--setup)
-- [Execution Guide](#-execution-guide)
-- [Scientific Outputs](#-scientific-outputs)
+- Overview & Capabilities  
+- Theoretical Alignment  
+- Folder Structure  
+- Installation & Setup  
+- Execution Guide  
+- Scientific Outputs  
 
 ---
 
 ## 🚀 Overview & Capabilities
 
-CraterX is engineered to process massive, multi-gigabyte 16-bit GeoTIFFs from the Lunar Reconnaissance Orbiter without requiring supercomputer hardware. It abandons brittle global thresholding in favor of localized, physics-based contrast maximization.
+CraterX is engineered to process massive, multi-gigabyte 16-bit GeoTIFFs from the Lunar Reconnaissance Orbiter without requiring supercomputer hardware. It uses localized, physics-based contrast maximization instead of global thresholding.
 
 **Key Capabilities:**
-- **Massive Scalability:** Successfully detects and catalogs **1.3+ million** micro-craters across disjoint LROC strips using localized grid-chunking.
-- **Sub-Pixel Precision:** Employs an iterative contrast-maximization solver that steps through the image grid at 0.5-pixel intervals to achieve mathematical precision beyond native camera resolution.
-- **Scale-Invariant Freshness:** Dynamically extracts localized patches and computes diameter-normalized contrast ratios to classify craters into standard morphological degradation classes (Prominent, Sharp, Distinct, Faint, Vague).
-- **Multi-View KD-Tree Matching:** Utilizes SciPy spatial `cKDTrees` and Phase Correlation to cross-reference craters across multiple orbital views in $O(\log N)$ time, featuring a robust "Union Fallback" for disjoint datasets.
+- Massive Scalability: Detects 1.3+ million micro-craters  
+- Sub-Pixel Precision: Uses 0.5-pixel refinement  
+- Scale-Invariant Freshness: Diameter-normalized contrast  
+- Efficient Matching: KD-Tree + Phase Correlation (log N)
 
 ---
 
 ## 🔬 Theoretical Alignment
 
-This pipeline is mathematically and architecturally aligned with the methodologies described in **Ganesh et al. (2022)** *(Automated precision counting of very small craters at lunar landing sites)*. 
+Aligned with Ganesh et al. (2022) – Automated precision counting of very small craters.
 
-It implements the core tenets of local-contrast shadow detection, sun-vector guided highlight searching, sub-pixel centering, and dynamic template refinement. *Note: Seeded Search (False Negative Recovery) was intentionally omitted from this implementation to preserve RAM efficiency on consumer-grade hardware.*
+Implements:
+- Local contrast detection  
+- Sun-direction guided search  
+- Sub-pixel refinement  
+- Template alignment  
 
 ---
 
 ## 📂 Folder Structure
 
-```text
 CraterX/
-│
-├── data/                   # (Ignored by Git)
-│   └── raw/                # Place raw 16-bit GeoTIFF LROC NAC images here
-│
-├── outputs/                # All generated scientific results (Ignored by Git)
-│   ├── checkpoints/        # Auto-saved detection caches for crash-recovery
-│   ├── crater_lists/       # CSV catalogs containing X, Y, Lat, Lon, D_m, Freshness
-│   ├── overlays/           # Massive, high-res visual HUD verification images
-│   └── plots/              # CSFD curves (.diam & .png) and spatial heatmaps
-│
-├── src/                    # Core Algorithms
-│   ├── preprocess.py       # GeoTIFF handling, scaling, and chunking
-│   ├── detection.py        # Local contrast shadow/highlight detection
-│   ├── fitting.py          # Iterative Sub-pixel contrast-maximization solver
-│   ├── templates.py        # Freshness classification & Template refinement
-│   ├── matching.py         # Multi-view global registration & KD-Tree Union matching
-│   ├── pixel_flagging.py   # Exclusion masking for dense regions
-│   ├── roi.py              # Landing Zone Region of Interest handlers
-│   ├── csfd.py             # Size-Frequency Distribution plotting & Craterstats prep
-│   ├── visualization.py    # Spatial density heatmap generation
-│   └── utils.py            # Geospatial affine translations
-│
-├── scripts/                # Maintenance and synthetic testing
-│   ├── update_checkpoints.py # Retrofits freshness data into existing caches
-│   └── ...
-│
-├── main.py                 # Pipeline Orchestrator
-├── config.py               # Hyperparameters and constants (MIN_VIEWS, ROI size)
-└── requirements.txt        # Python dependency manifest
-```
+├── data/  
+├── outputs/  
+│   ├── checkpoints/  
+│   ├── crater_lists/  
+│   ├── overlays/  
+│   └── plots/  
+├── src/  
+├── scripts/  
+├── main.py  
+├── config.py  
+└── requirements.txt  
 
 ---
 
 ## 💻 Installation & Setup
 
-1. **Clone the Repository**
-   ```bash
-   git clone https://github.com/rohit02k5/CraterX.git
-   cd CraterX
-   ```
-
-2. **Create a Virtual Environment (Highly Recommended)**
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows use: venv\Scripts\activate
-   ```
-
-3. **Install Dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. **Prepare your Data**
-   Place your high-resolution 16-bit `.tif` LROC NAC images into the `data/raw/` folder.
+git clone https://github.com/rohit02k5/CraterX.git  
+cd CraterX  
+python -m venv venv  
+source venv/bin/activate  
+pip install -r requirements.txt  
 
 ---
 
 ## ⚙️ Execution Guide
 
-Before running, configure your Landing Zone constraints in `config.py`:
-- `PIXEL_SIZE_METERS`: Native resolution (Default: 0.5)
-- `ROI_RADIUS_METERS`: Target landing zone size.
-- `MIN_VIEWS_FOR_CERT`: Set to `1` to enable Union Fallback for disjoint strips, or `2` for strict intersection certification.
-
-**To execute the entire pipeline:**
-```bash
-python main.py
-```
-*Note: Initial detection on gigabyte-sized images can take several hours. The system automatically caches progress to `outputs/checkpoints/`. If your system crashes, simply rerun `main.py` to instantly resume from the exact point of failure.*
+python main.py  
 
 ---
 
 ## 📊 Scientific Outputs
 
-Upon completion, CraterX generates a comprehensive suite of data in the `outputs/` directory:
+### Visual Overlay
 
-1. **`research_catalog_FULL.csv`**: The master database containing sub-pixel X/Y coordinates, true Latitude/Longitude, Diameter in meters, and Morphological Freshness.
-2. **`csfd_plot_FULL.diam`**: A Craterstats-ready file tracking cumulative density per $km^2$ with standard Poisson error bars.
-3. **`research_overlay_FULL.png`**: A massive visual diagnostic output overlaying high-tech HUD targeting reticles onto the raw imagery to visually verify every single detection.
-4. **`density_heatmap_FULL.png`**: A topological spatial map indicating crater density severity across the landing zone.
+outputs/overlays/research_overlay_FULL.png  
+
+<img width="1744" height="872" alt="Screenshot 2026-04-28 151951" src="https://github.com/user-attachments/assets/16202323-3535-4af0-88da-ac95ebc8955a" />
+<img width="1179" height="838" alt="Screenshot 2026-04-28 152015" src="https://github.com/user-attachments/assets/ebfd0d14-9967-4660-b907-9d7d65810c0e" />
+<img width="1720" height="909" alt="Screenshot 2026-04-28 152200" src="https://github.com/user-attachments/assets/bc0ab0c9-ebd7-4d67-b5c2-5a21de50a63a" />
+
+
+- Displays detected craters  
+- Validates geometric fitting  
+- Shows sub-pixel precision  
 
 ---
-*Developed for advanced Lunar Landing Site Selection and Surface Age-Dating Analysis.*
+
+---
+
+## 🧠 Key Highlights
+
+- Memory-efficient processing  
+- High-precision detection  
+- Multi-view validation  
+- Scientifically accurate outputs  
+
+---
+
+Developed for Lunar Surface Analysis and Landing Site Evaluation
